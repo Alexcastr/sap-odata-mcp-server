@@ -104,8 +104,8 @@ Este es el paso final donde conectas tu servidor local con Claude.
       ],
       "env": {
         "SAP_ODATA_BASE_URL": "http://s4h24.sap4practice.com:8024/sap/opu/odata/sap/API_PURCHASEORDER_PROCESS_SRV",
-        "SAP_USERNAME": "NBN",
-        "SAP_PASSWORD": "Logali.2025",
+        "SAP_USERNAME": "user name",
+        "SAP_PASSWORD": "user passw",
         "SAP_CLIENT": "100",
         "SAP_VALIDATE_SSL": "false"
       }

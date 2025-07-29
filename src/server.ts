@@ -10,14 +10,14 @@ import { toolDefinitions } from "./tool-definitions.js";
 import { SAPODataHandlers } from "./handlers.js";
 
 export class SAPODataMCPServer {
-  private server: Server;
+  public server: Server;
   private handlers: SAPODataHandlers;
 
   constructor() {
-  this.server = new Server({
-    name: "sap-odata-mcp-server",
-    version: "0.1.0",
-  });
+this.server = new Server(
+  { name: "sap-odata-mcp-server", version: "0.1.0" },
+  { capabilities: { tools: {} } }  // ← aquí se activa el soporte de herramientas
+);
 
     this.handlers = new SAPODataHandlers();
     this.setupToolHandlers();

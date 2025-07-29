@@ -1,46 +1,62 @@
 
 import { SAPODataClient } from "./odata-client.js";
 import { ODataServiceList, SAPODataConfigSchema } from "./types.js";
-
+import dotenv from 'dotenv';
+dotenv.config();
 
 export class SAPODataHandlers {
   private sapClient: SAPODataClient | null = null;
 
   async handleConnect(args: any) {
-    try {
-      // Close existing connection if any
-      if (this.sapClient) {
-        await this.sapClient.disconnect();
-      }
+  // 1) Lee de args o, si no viene, de las env vars
+  const baseUrl   = args.baseUrl   || process.env.SAP_BASE_URL;
+  const username  = args.username  || process.env.SAP_USERNAME; 
+  const password  = args.password  || process.env.SAP_PASSWORD;
+  const client    = args.client    || process.env.SAP_CLIENT;
+  
+  const validateSSL = args.validateSSL != null
+                        ? args.validateSSL
+                        : process.env.SAP_VALIDATE_SSL === 'true';
+  const enableCSRF  = args.enableCSRF  != null
+                        ? args.enableCSRF
+                        : process.env.SAP_ENABLE_CSRF !== 'false';
+  const timeout     = args.timeout     ?? Number(process.env.SAP_TIMEOUT ?? 30000);
 
-      const config = SAPODataConfigSchema.parse(args);
-      this.sapClient = new SAPODataClient(config);
-      await this.sapClient.connect();
-      
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Successfully connected to SAP OData service:\n- Base URL: ${config.baseUrl}\n- Username: ${config.username}\n- Client: ${config.client || 'Not specified'}\n- CSRF Enabled: ${config.enableCSRF}\n\nNote: The base URL may return 404 when accessed directly. This is normal for SAP OData services - you need to specify a service name. Use 'Get list of available OData services' to discover available services.`,
-          },
-        ],
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      // Provide helpful error messages for common issues
-      if (errorMessage.includes('404')) {
-        throw new Error(`Connection test returned 404. This might be expected for SAP OData base URLs. The issue could be:
-1. The base URL is incomplete (needs a service name)
-2. OData services are not activated at this path
-3. Different URL structure is needed
-
-Try running the discovery tool to find the correct URL: npm run discover:services`);
-      }
-      
-      throw new Error(`Failed to connect to SAP OData service: ${errorMessage}`);
-    }
+  // 2) Valida los obligatorios
+  if (!baseUrl || !username || !password) {
+    throw new Error(
+      "Faltan credenciales SAP: revisa tus env vars SAP_BASE_URL, SAP_USERNAME, SAP_PASSWORD"
+    );
   }
+
+  // 3) Construye tu config Zod‑safe
+  const config = SAPODataConfigSchema.parse({
+    baseUrl,
+    username,
+    password,
+    client,
+    validateSSL,
+    enableCSRF,
+    timeout
+  });
+
+  // 4) Conecta igual que antes
+  if (this.sapClient) {
+    await this.sapClient.disconnect();
+  }
+  this.sapClient = new SAPODataClient(config);
+  await this.sapClient.connect();
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `✅ Conectado a SAP OData:\n• URL: ${config.baseUrl}\n• Usuario: ${config.username}\n• Cliente: ${config.client ?? 'no especificado'}`
+      }
+    ]
+  };
+}
+
 
   async handleGetServices() {
     this.ensureConnected();
