@@ -1,0 +1,11 @@
+services:
+  mcp-server:
+    container_name: mcp-server 
+    build: .
+    stdin_open: true   # -i
+    tty: true          # -t
+    env_file:
+      - .env
+    ports:
+      - "8007:8007"
+    restart: unless-stopped
