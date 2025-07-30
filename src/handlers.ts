@@ -1,61 +1,57 @@
 
-import { SAPODataClient } from "./odata-client.js";
 import { ODataServiceList, SAPODataConfigSchema } from "./types.js";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import { SAPODataClient } from "./odata-client.js";
+import { z } from "zod";
 import dotenv from 'dotenv';
 dotenv.config();
 
 export class SAPODataHandlers {
   private sapClient: SAPODataClient | null = null;
 
-  async handleConnect(args: any) {
-  // 1) Lee de args o, si no viene, de las env vars
-  const baseUrl   = args.baseUrl   || process.env.SAP_BASE_URL;
-  const username  = args.username  || process.env.SAP_USERNAME; 
-  const password  = args.password  || process.env.SAP_PASSWORD;
-  const client    = args.client    || process.env.SAP_CLIENT;
-  
-  const validateSSL = args.validateSSL != null
-                        ? args.validateSSL
-                        : process.env.SAP_VALIDATE_SSL === 'true';
-  const enableCSRF  = args.enableCSRF  != null
-                        ? args.enableCSRF
-                        : process.env.SAP_ENABLE_CSRF !== 'false';
-  const timeout     = args.timeout     ?? Number(process.env.SAP_TIMEOUT ?? 30000);
+  async handleConnect(args: any) { // Los argumentos 'args' serán ignorados
+    try {
+      // Utiliza SIEMPRE las variables de entorno como la fuente principal de configuración.
+      const configData = {
+        baseUrl: process.env.SAP_BASE_URL,
+        username: process.env.SAP_USERNAME,
+        password: process.env.SAP_PASSWORD,
+        client: process.env.SAP_CLIENT,
+        timeout: process.env.SAP_TIMEOUT ? Number(process.env.SAP_TIMEOUT) : undefined,
+        validateSSL: process.env.SAP_VALIDATE_SSL === 'false' ? false : undefined,
+        enableCSRF: process.env.SAP_ENABLE_CSRF === 'false' ? false : undefined,
+      };
 
-  // 2) Valida los obligatorios
-  if (!baseUrl || !username || !password) {
-    throw new Error(
-      "Faltan credenciales SAP: revisa tus env vars SAP_BASE_URL, SAP_USERNAME, SAP_PASSWORD"
-    );
-  }
+      // Valida la configuración con Zod. Esto arrojará un error si faltan variables obligatorias.
+      const config = SAPODataConfigSchema.parse(configData);
 
-  // 3) Construye tu config Zod‑safe
-  const config = SAPODataConfigSchema.parse({
-    baseUrl,
-    username,
-    password,
-    client,
-    validateSSL,
-    enableCSRF,
-    timeout
-  });
-
-  // 4) Conecta igual que antes
-  if (this.sapClient) {
-    await this.sapClient.disconnect();
-  }
-  this.sapClient = new SAPODataClient(config);
-  await this.sapClient.connect();
-
-  return {
-    content: [
-      {
-        type: "text",
-        text: `✅ Conectado a SAP OData:\n• URL: ${config.baseUrl}\n• Usuario: ${config.username}\n• Cliente: ${config.client ?? 'no especificado'}`
+      if (this.sapClient) {
+        await this.sapClient.disconnect();
       }
-    ]
-  };
-}
+
+      this.sapClient = new SAPODataClient(config);
+      await this.sapClient.connect();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully connected to SAP OData service:\n` +
+              `- Base URL: ${config.baseUrl}\n` +
+              `- Username: ${config.username}\n` +
+              `- Client: ${config.client ?? 'Not specified'}`
+          },
+        ],
+      };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const missingVars = error.errors.map(e => e.path.join('.')).join(', ');
+        throw new McpError(ErrorCode.InvalidParams, `Configuration error. Missing or invalid environment variables: ${missingVars}. Please check your mcpServers.json.`);
+      }
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new McpError(ErrorCode.InternalError, `Failed to connect to SAP: ${msg}`);
+    }
+  }
 
 
   async handleGetServices() {
@@ -67,23 +63,23 @@ export class SAPODataHandlers {
 
     try {
       const result = await this.sapClient!.getServices();
-      
+
       // Type assertion to ensure we have the full interface
       const serviceResult = result as ODataServiceList & {
         source?: string;
         message?: string;
         catalogUrl?: string;
       };
-      
+
       let responseText = `SAP OData Service Discovery Results:\n\n`;
-      
+
       if (serviceResult.services && serviceResult.services.length > 0) {
         responseText += `✅ Found ${serviceResult.services.length} services`;
         if (serviceResult.source) {
-          responseText += ` (via ${serviceResult.source})`; 
+          responseText += ` (via ${serviceResult.source})`;
         }
         responseText += `:\n\n`;
-        
+
         serviceResult.services.forEach((service: any, index: number) => {
           responseText += `${index + 1}. ${service.name}\n`;
           if (service.title && service.title !== service.name) {
@@ -97,11 +93,11 @@ export class SAPODataHandlers {
           }
           responseText += `\n`;
         });
-        
+
         responseText += `💡 To use these services:\n`;
         responseText += `1. Get metadata: "Get metadata for service ${serviceResult.services[0].name}"\n`;
         responseText += `2. Query data: "Query [EntitySet] from ${serviceResult.services[0].name}"\n`;
-        
+
       } else {
         responseText += `❌ No OData services found.\n\n`;
         responseText += `This could mean:\n`;
@@ -112,12 +108,12 @@ export class SAPODataHandlers {
         responseText += `1. Contact SAP administrator to verify OData service activation\n`;
         responseText += `2. Check SAP GUI: Transaction /IWFND/MAINT_SERVICE\n`;
         responseText += `3. Run local discovery: npm run discover:services\n`;
-        
+
         if (serviceResult.message) {
           responseText += `\nNote: ${serviceResult.message}`;
         }
       }
-      
+
       return {
         content: [
           {
@@ -142,9 +138,9 @@ export class SAPODataHandlers {
 
     try {
       const result = await this.sapClient!.getServiceMetadata(args.serviceName);
-      
+
       let responseText = `SAP OData Service Metadata for ${args.serviceName}:\n\n`;
-      
+
       if (result.entities && result.entities.length > 0) {
         responseText += `Entity Types (${result.entities.length}):\n`;
         result.entities.forEach((entity: any) => {
@@ -156,7 +152,7 @@ export class SAPODataHandlers {
           }
         });
       }
-      
+
       if (result.functions && result.functions.length > 0) {
         responseText += `\n\nFunction Imports (${result.functions.length}):\n`;
         result.functions.forEach((func: any) => {
@@ -167,7 +163,7 @@ export class SAPODataHandlers {
           responseText += `\n`;
         });
       }
-      
+
       return {
         content: [
           {
@@ -199,17 +195,17 @@ export class SAPODataHandlers {
         skip: args.skip,
         expand: args.expand,
       });
-      
+
       let responseText = `SAP OData Query Results for ${args.serviceName}/${args.entitySet}:\n\n`;
-      
+
       if (result.d && result.d.results) {
         const records = result.d.results;
         responseText += `Records found: ${records.length}\n\n`;
-        
+
         if (records.length > 0) {
           responseText += `Sample data (first ${Math.min(3, records.length)} records):\n`;
           responseText += JSON.stringify(records.slice(0, 3), null, 2);
-          
+
           if (records.length > 3) {
             responseText += `\n\n... and ${records.length - 3} more records`;
           }
@@ -218,11 +214,11 @@ export class SAPODataHandlers {
         // OData v4 format
         const records = result.value;
         responseText += `Records found: ${records.length}\n\n`;
-        
+
         if (records.length > 0) {
           responseText += `Sample data (first ${Math.min(3, records.length)} records):\n`;
           responseText += JSON.stringify(records.slice(0, 3), null, 2);
-          
+
           if (records.length > 3) {
             responseText += `\n\n... and ${records.length - 3} more records`;
           }
@@ -230,7 +226,7 @@ export class SAPODataHandlers {
       } else {
         responseText += "No data found matching the criteria.";
       }
-      
+
       // Include query parameters used
       const queryParams = [];
       if (args.select) queryParams.push(`$select: ${args.select.join(', ')}`);
@@ -239,11 +235,11 @@ export class SAPODataHandlers {
       if (args.top) queryParams.push(`$top: ${args.top}`);
       if (args.skip) queryParams.push(`$skip: ${args.skip}`);
       if (args.expand) queryParams.push(`$expand: ${args.expand.join(', ')}`);
-      
+
       if (queryParams.length > 0) {
         responseText += `\n\nQuery parameters used:\n${queryParams.join('\n')}`;
       }
-      
+
       return {
         content: [
           {
@@ -268,11 +264,11 @@ export class SAPODataHandlers {
 
     try {
       const result = await this.sapClient!.getEntity(args.serviceName, args.entitySet, args.keyValues);
-      
+
       let responseText = `SAP OData Entity from ${args.serviceName}/${args.entitySet}:\n\n`;
       responseText += `Key values: ${JSON.stringify(args.keyValues, null, 2)}\n\n`;
       responseText += `Entity data:\n${JSON.stringify(result.d || result, null, 2)}`;
-      
+
       return {
         content: [
           {
@@ -297,11 +293,11 @@ export class SAPODataHandlers {
 
     try {
       const result = await this.sapClient!.createEntity(args.serviceName, args.entitySet, args.data);
-      
+
       let responseText = `SAP OData Entity Created in ${args.serviceName}/${args.entitySet}:\n\n`;
       responseText += `Input data:\n${JSON.stringify(args.data, null, 2)}\n\n`;
       responseText += `Created entity:\n${JSON.stringify(result.d || result, null, 2)}`;
-      
+
       return {
         content: [
           {
@@ -326,16 +322,16 @@ export class SAPODataHandlers {
 
     try {
       const result = await this.sapClient!.updateEntity(args.serviceName, args.entitySet, args.keyValues, args.data);
-      
+
       let responseText = `SAP OData Entity Updated in ${args.serviceName}/${args.entitySet}:\n\n`;
       responseText += `Key values: ${JSON.stringify(args.keyValues, null, 2)}\n\n`;
       responseText += `Update data: ${JSON.stringify(args.data, null, 2)}\n\n`;
       responseText += `Update successful`;
-      
+
       if (result && Object.keys(result).length > 0) {
         responseText += `\n\nResponse: ${JSON.stringify(result, null, 2)}`;
       }
-      
+
       return {
         content: [
           {
@@ -360,11 +356,11 @@ export class SAPODataHandlers {
 
     try {
       await this.sapClient!.deleteEntity(args.serviceName, args.entitySet, args.keyValues);
-      
+
       let responseText = `SAP OData Entity Deleted from ${args.serviceName}/${args.entitySet}:\n\n`;
       responseText += `Key values: ${JSON.stringify(args.keyValues, null, 2)}\n\n`;
       responseText += `Entity successfully deleted`;
-      
+
       return {
         content: [
           {
@@ -388,15 +384,15 @@ export class SAPODataHandlers {
 
     try {
       const result = await this.sapClient!.callFunction(args.serviceName, args.functionName, args.parameters || {});
-      
+
       let responseText = `SAP OData Function Result for ${args.serviceName}/${args.functionName}:\n\n`;
-      
+
       if (args.parameters && Object.keys(args.parameters).length > 0) {
         responseText += `Parameters: ${JSON.stringify(args.parameters, null, 2)}\n\n`;
       }
-      
+
       responseText += `Result:\n${JSON.stringify(result, null, 2)}`;
-      
+
       return {
         content: [
           {
@@ -427,10 +423,10 @@ export class SAPODataHandlers {
     try {
       const isConnected = await this.sapClient.isConnected();
       const connectionInfo = this.sapClient.getConnectionInfo();
-      
+
       let statusText = `SAP OData Connection Status:\n\n`;
       statusText += `Status: ${isConnected ? '✅ Connected' : '❌ Disconnected'}\n`;
-      
+
       if (connectionInfo) {
         statusText += `Base URL: ${connectionInfo.baseUrl}\n`;
         statusText += `Username: ${connectionInfo.username}\n`;
@@ -439,11 +435,11 @@ export class SAPODataHandlers {
         statusText += `CSRF Enabled: ${connectionInfo.enableCSRF}\n`;
         statusText += `CSRF Token: ${connectionInfo.hasCSRFToken ? 'Available' : 'Not available'}\n`;
       }
-      
+
       if (!isConnected) {
         statusText += `\nNote: Connection appears to be lost. Use sap_connect to reconnect.`;
       }
-      
+
       return {
         content: [
           {
@@ -469,7 +465,7 @@ export class SAPODataHandlers {
       try {
         await this.sapClient.disconnect();
         this.sapClient = null;
-        
+
         return {
           content: [
             {
@@ -481,7 +477,7 @@ export class SAPODataHandlers {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         this.sapClient = null; // Force cleanup even if disconnect fails
-        
+
         return {
           content: [
             {

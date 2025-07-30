@@ -3,19 +3,10 @@ import { Tool } from "@modelcontextprotocol/sdk/types.js";
 export const toolDefinitions: Tool[] = [
   {
     name: "sap_connect",
-    description: "Connect to SAP OData service",
+    description: "Connects to the pre-configured SAP OData service using the provided server environment settings.",
     inputSchema: {
       type: "object",
-      properties: {
-        baseUrl: { type: "string", description: "SAP OData service base URL (e.g., https://sap-host:8000/sap/opu/odata/sap/)" },
-        username: { type: "string", description: "SAP username" },
-        password: { type: "string", description: "SAP password" },
-        client: { type: "string", description: "SAP client number (optional)" },
-        timeout: { type: "number", description: "Request timeout in milliseconds", default: 30000 },
-        validateSSL: { type: "boolean", description: "Validate SSL certificates", default: true },
-        enableCSRF: { type: "boolean", description: "Enable CSRF token handling", default: true },
-      },
-      required: ["baseUrl", "username", "password"],
+      properties: {}, // No se requieren propiedades de entrada
     },
   },
   {
