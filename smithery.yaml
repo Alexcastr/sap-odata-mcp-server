@@ -1,0 +1,50 @@
+# Smithery configuration file: https://smithery.ai/docs/build/project-config
+
+startCommand:
+  type: stdio
+  commandFunction:
+    # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
+    |-
+    (config)=>({command:'node',args:['dist/index.js'],env:{SAP_ODATA_BASE_URL:config.sapOdataBaseUrl,SAP_USERNAME:config.sapUsername,SAP_PASSWORD:config.sapPassword,SAP_CLIENT:config.sapClient?.toString(),SAP_TIMEOUT:config.sapTimeout?.toString(),SAP_VALIDATE_SSL:config.sapValidateSsl?.toString(),SAP_ENABLE_CSRF:config.sapEnableCsrf?.toString()}})
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - sapOdataBaseUrl
+      - sapUsername
+      - sapPassword
+    properties:
+      sapOdataBaseUrl:
+        type: string
+        description: Base URL of the SAP OData service, e.g.,
+          https://your-sap-host:8000/sap/opu/odata/sap/
+      sapUsername:
+        type: string
+        description: SAP username
+      sapPassword:
+        type: string
+        description: SAP password
+      sapClient:
+        type: number
+        default: 100
+        description: SAP client number
+      sapTimeout:
+        type: number
+        default: 30000
+        description: Request timeout in ms
+      sapValidateSsl:
+        type: boolean
+        default: true
+        description: Whether to validate SSL certificates
+      sapEnableCsrf:
+        type: boolean
+        default: true
+        description: Whether to enable CSRF token handling
+  exampleConfig:
+    sapOdataBaseUrl: https://sap.example.com:8000/sap/opu/odata/sap/
+    sapUsername: USER
+    sapPassword: PASSWORD
+    sapClient: 100
+    sapTimeout: 30000
+    sapValidateSsl: false
+    sapEnableCsrf: true
