@@ -1,4 +1,5 @@
 # SAP OData MCP Server
+[![smithery badge](https://smithery.ai/badge/@Alexcastr/sap-odata-mcp-server)](https://smithery.ai/server/@Alexcastr/sap-odata-mcp-server)
 
 A Model Context Protocol (MCP) server for integrating SAP systems with AI assistants like Claude using OData REST APIs. This server provides tools for connecting to SAP OData services, querying entity sets, executing CRUD operations, and calling OData functions.
 
@@ -23,6 +24,14 @@ A Model Context Protocol (MCP) server for integrating SAP systems with AI assist
 ⚠️ **Advantage**: No SAP RFC SDK installation required! Uses standard HTTP/REST APIs.
 
 ## Installation
+
+### Installing via Smithery
+
+To install SAP OData Integration Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@Alexcastr/sap-odata-mcp-server):
+
+```bash
+npx -y @smithery/cli install @Alexcastr/sap-odata-mcp-server --client claude
+```
 
 ### Quick Setup
 
@@ -397,4 +406,3 @@ npm run format
 ## License
 
 MIT License - see LICENSE file for details.
-
