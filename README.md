@@ -182,7 +182,7 @@ RUN npm install -g pnpm \
 COPY .env .env
 
 # Expone el puerto de tu servidor
-EXPOSE 8007
+EXPOSE 3007
 
 # Arranca la aplicación
 CMD ["node", "dist/index.js"]

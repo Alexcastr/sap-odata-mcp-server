@@ -1,76 +1,87 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import http from 'node:http';
-import crypto from 'node:crypto';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import express from 'express';
+import cors from 'cors';
+import { randomUUID } from 'node:crypto';
 import { SAPODataMCPServer } from './server.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 
-function getRawBody(req: http.IncomingMessage): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
-  });
-}
+const app = express();
+app.use(express.json());
 
-async function main() {
-  console.error("🚀 Initializing SAP OData MCP Server for HTTP...");
+// --------- CORS para MCP Headers (requerido para browser/n8n/Claude) ----------
+app.use(cors({
+  origin: '*', // Cambia esto en producción si quieres restringir
+  exposedHeaders: ['Mcp-Session-Id'],
+  allowedHeaders: ['Content-Type', 'mcp-session-id', 'Mcp-Session-Id'],
+}));
+// -----------------------------------------------------------------------------
 
-  const wrapper = new SAPODataMCPServer();
-  const server = wrapper.server;
 
-  const httpTransport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => crypto.randomUUID(),
-    enableJsonResponse: true,
-  });
+// ------- Session-aware transport map -------
+const transports: Record<string, StreamableHTTPServerTransport> = {};
 
-  await server.connect(httpTransport);
-  console.error("✅ HTTP transport successfully connected to MCP server.");
+// MCP HTTP POST (inicia o reusa sesión)
+app.post('/mcp', async (req, res) => {
+  // Para Claude/n8n, header puede ser 'mcp-session-id' o 'Mcp-Session-Id'
+  const sessionId = (req.headers['mcp-session-id'] || req.headers['Mcp-Session-Id']) as string | undefined;
+  let transport: StreamableHTTPServerTransport;
 
-  const port = Number(process.env.PORT ?? 3007); // Coolify usa 3000 por defecto
-  const httpServer = http.createServer(async (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Mcp-Session-Id');
-    
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204);
-      return res.end();
-    }
+  if (sessionId && transports[sessionId]) {
+    transport = transports[sessionId];
+  } else if (!sessionId && isInitializeRequest(req.body)) {
+    // Nuevo transporte/session para este cliente
+    transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (sessionId) => {
+        transports[sessionId] = transport;
+      },
+      enableJsonResponse: true
+    });
 
-    // --- AÑADIDO: LA RUTA PARA EL HEALTH CHECK ---
-    if (req.url === '/health') {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      return res.end('OK');
-    }
-    // --- FIN DEL AÑADIDO ---
+    // Cleanup cuando cierre la session
+    transport.onclose = () => {
+      if (transport.sessionId) delete transports[transport.sessionId];
+    };
 
-    if (req.url === '/mcp' && ['GET', 'POST', 'DELETE'].includes(req.method!)) {
-      let body: any;
-      if (req.method === 'POST') {
-        try {
-          const buf = await getRawBody(req);
-          body = buf.length > 0 ? JSON.parse(buf.toString()) : undefined;
-        } catch {
-          res.writeHead(400);
-          return res.end('Invalid JSON');
-        }
-      }
-      return httpTransport.handleRequest(req, res, body);
-    }
+    // MCP Server de tu app
+    const wrapper = new SAPODataMCPServer();
+    await wrapper.server.connect(transport);
+  } else {
+    res.status(400).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32000,
+        message: 'Bad Request: No valid session ID provided',
+      },
+      id: null,
+    });
+    return;
+  }
 
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found');
-  });
+  await transport.handleRequest(req, res, req.body);
+});
 
-  httpServer.listen(port, () => {
-    console.error(`🌐 Server listening on http://localhost:${port}`);
-  });
-}
+// MCP HTTP GET y DELETE (SSE/notifications/terminar sesión)
+const handleSessionRequest = async (req: express.Request, res: express.Response) => {
+  const sessionId = (req.headers['mcp-session-id'] || req.headers['Mcp-Session-Id']) as string | undefined;
+  if (!sessionId || !transports[sessionId]) {
+    res.status(400).send('Invalid or missing session ID');
+    return;
+  }
+  const transport = transports[sessionId];
+  await transport.handleRequest(req, res);
+};
+app.get('/mcp', handleSessionRequest);
+app.delete('/mcp', handleSessionRequest);
 
-main().catch((err) => {
-  console.error('❌ Failed to start SAP OData MCP server:', err);
-  process.exit(1);
+// Health endpoint opcional
+app.get('/health', (_, res) => res.status(200).send('OK'));
+
+// Arrancar
+const port = Number(process.env.PORT ?? 3007);
+app.listen(port, () => {
+  console.error(`🌐 SAP OData MCP Server listening on http://localhost:${port}`);
 });

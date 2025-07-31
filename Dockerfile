@@ -33,9 +33,11 @@ COPY package.json pnpm-lock.yaml ./
 RUN npm install -g pnpm \
     && pnpm install --prod --frozen-lockfile
 
+# Copia tu .env (contiene vars como PORT, SAP_* etc)
+COPY .env .env
 
 # Expone el puerto que usa tu servidor (ajusta si tu .env define otro)
-EXPOSE 8007
+EXPOSE 3007
 
 # Arranca la aplicación desde el build
 CMD ["node", "dist/index.js"]

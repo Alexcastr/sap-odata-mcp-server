@@ -8,16 +8,17 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { toolDefinitions } from "./tool-definitions.js";
 import { SAPODataHandlers } from "./handlers.js";
+import { InitializeRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 export class SAPODataMCPServer {
   public server: Server;
   private handlers: SAPODataHandlers;
 
   constructor() {
-this.server = new Server(
-  { name: "sap-odata-mcp-server", version: "0.1.0" },
-  { capabilities: { tools: {} } }  // ← aquí se activa el soporte de herramientas
-);
+    this.server = new Server(
+      { name: "sap-odata-mcp-server", version: "0.1.0" },
+      { capabilities: { tools: { listChanged: true } } }  // ← aquí se activa el soporte de herramientas
+    );
 
     this.handlers = new SAPODataHandlers();
     this.setupToolHandlers();
@@ -34,11 +35,17 @@ this.server = new Server(
   }
 
   private setupToolHandlers(): void {
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+    this.server.setRequestHandler(InitializeRequestSchema, async () => {
       return {
-        tools: toolDefinitions,
+        capabilities: { tools: { listChanged: true } }
       };
     });
+
+    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+    return {
+      tools: toolDefinitions,
+    };
+  });
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
@@ -78,6 +85,15 @@ this.server = new Server(
         throw new McpError(ErrorCode.InternalError, errorMessage);
       }
     });
+
+    //     this.server.setRequestHandler("getManifest", async () => {
+    //   return {
+    //     name: "sap-odata-mcp-server",
+    //     version: "0.1.0",
+    //     description: "Model Context Protocol server for SAP OData integration",
+    //     capabilities: { tools: { listChanged: true } }
+    //   };
+    // });
   }
 
   async run(): Promise<void> {
