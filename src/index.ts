@@ -25,52 +25,83 @@ const transports: Record<string, StreamableHTTPServerTransport> = {};
 
 // MCP HTTP POST (inicia o reusa sesión)
 app.post('/mcp', async (req, res) => {
-  // Para Claude/n8n, header puede ser 'mcp-session-id' o 'Mcp-Session-Id'
+  // ======================= INICIO: LOGS DE DEPURACIÓN =======================
+  console.log('\n--- [DEBUG] INICIO: Petición POST a /mcp ---');
+  console.log(`[DEBUG] Hora: ${new Date().toISOString()}`);
+  console.log('[DEBUG] Headers Recibidos:', JSON.stringify(req.headers, null, 2));
+  console.log('[DEBUG] Body Recibido:', JSON.stringify(req.body, null, 2));
+  
+  const isInit = isInitializeRequest(req.body);
+  console.log(`[DEBUG] ¿Es una petición de inicialización? (isInitializeRequest): ${isInit}`);
+  
   const sessionId = (req.headers['mcp-session-id'] || req.headers['Mcp-Session-Id']) as string | undefined;
+  console.log(`[DEBUG] Session ID extraído del header: ${sessionId || 'No encontrado'}`);
+  // ======================== FIN: LOGS DE DEPURACIÓN =========================
+
   let transport: StreamableHTTPServerTransport;
 
   if (sessionId && transports[sessionId]) {
+    console.log(`[INFO] Reutilizando transporte para la sesión: ${sessionId}`);
     transport = transports[sessionId];
-  } else if (!sessionId && isInitializeRequest(req.body)) {
+  } else if (!sessionId && isInit) {
+    console.log('[INFO] Creando nuevo transporte para una nueva sesión de inicialización.');
     // Nuevo transporte/session para este cliente
     transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
-      onsessioninitialized: (sessionId) => {
-        transports[sessionId] = transport;
+      onsessioninitialized: (newSessionId) => {
+        console.log(`[INFO] Sesión inicializada con ID: ${newSessionId}. Almacenando transporte.`);
+        transports[newSessionId] = transport;
       },
       enableJsonResponse: true
     });
 
     // Cleanup cuando cierre la session
     transport.onclose = () => {
-      if (transport.sessionId) delete transports[transport.sessionId];
+      if (transport.sessionId) {
+        console.log(`[INFO] Sesión cerrada: ${transport.sessionId}. Eliminando transporte.`);
+        delete transports[transport.sessionId];
+      }
     };
 
     // MCP Server de tu app
     const wrapper = new SAPODataMCPServer();
     await wrapper.server.connect(transport);
   } else {
+    // ======================= LOG DE ERROR DETALLADO =======================
+    console.error('[ERROR] La petición no pudo ser manejada. Cayó en el bloque "else".');
+    console.error(`[ERROR] Detalles de la condición fallida:`);
+    console.error(`[ERROR]   - Session ID encontrado: ${!!sessionId}`);
+    console.error(`[ERROR]   - Es petición de inicialización: ${isInit}`);
+    console.error('[ERROR] Enviando respuesta 400 Bad Request.');
+    // ======================================================================
     res.status(400).json({
       jsonrpc: '2.0',
       error: {
         code: -32000,
-        message: 'Bad Request: No valid session ID provided',
+        message: 'Bad Request: No valid session ID provided or invalid initialize request.',
       },
-      id: null,
+      id: req.body?.id ?? null,
     });
     return;
   }
 
+  console.log('[INFO] Petición válida. Pasando al manejador del transporte.');
   await transport.handleRequest(req, res, req.body);
 });
 
 // MCP HTTP GET y DELETE (SSE/notifications/terminar sesión)
 const handleSessionRequest = async (req: express.Request, res: express.Response) => {
+  console.log(`\n--- [DEBUG] INICIO: Petición ${req.method} a /mcp ---`);
   const sessionId = (req.headers['mcp-session-id'] || req.headers['Mcp-Session-Id']) as string | undefined;
+  console.log(`[DEBUG] Buscando sesión con ID: ${sessionId || 'No encontrado'}`);
+  
   if (!sessionId || !transports[sessionId]) {
+    console.error('[ERROR] ID de sesión inválido o ausente. Enviando respuesta 400.');
     res.status(400).send('Invalid or missing session ID');
     return;
   }
+  
+  console.log(`[INFO] Sesión encontrada para ${sessionId}. Pasando al manejador del transporte.`);
   const transport = transports[sessionId];
   await transport.handleRequest(req, res);
 };
@@ -78,10 +109,14 @@ app.get('/mcp', handleSessionRequest);
 app.delete('/mcp', handleSessionRequest);
 
 // Health endpoint opcional
-app.get('/health', (_, res) => res.status(200).send('OK'));
+app.get('/health', (_, res) => {
+    // Opcional: Log para saber que el health check está funcionando
+    // console.log(`[HEALTH] Health check a las ${new Date().toISOString()}`);
+    res.status(200).send('OK');
+});
 
 // Arrancar
 const port = Number(process.env.PORT ?? 3007);
 app.listen(port, () => {
-  console.error(`🌐 SAP OData MCP Server listening on http://localhost:${port}`);
+  console.error(`✅ [START] Servidor SAP OData MCP iniciado y escuchando en el puerto: ${port}`);
 });
