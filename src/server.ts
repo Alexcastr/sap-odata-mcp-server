@@ -1,5 +1,8 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { EventId } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { StreamableHTTPServerTransportOptions } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ErrorCode,
@@ -14,10 +17,10 @@ export class SAPODataMCPServer {
   private handlers: SAPODataHandlers;
 
   constructor() {
-  this.server = new Server({
-    name: "sap-odata-mcp-server",
-    version: "0.1.0",
-  });
+    this.server = new Server(
+      { name: "sap-odata-mcp-server", version: "0.1.0" },
+      { capabilities: { tools: { listChanged: true } } },
+    );
 
     this.handlers = new SAPODataHandlers();
     this.setupToolHandlers();
@@ -81,8 +84,12 @@ export class SAPODataMCPServer {
   }
 
   async run(): Promise<void> {
-    const transport = new StdioServerTransport();
+    // Para un servidor HTTP sin estado, pasa las opciones con sessionIdGenerator como undefined
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+    });
+
     await this.server.connect(transport);
-    console.error("SAP OData MCP server running on stdio");
+    console.error("SAP OData MCP server running over HTTP");
   }
 }

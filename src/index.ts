@@ -16,3 +16,4 @@ server.run().catch((error) => {
   console.error("Failed to start SAP OData MCP server:", error);
   process.exit(1);
 });
+
