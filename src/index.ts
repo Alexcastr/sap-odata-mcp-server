@@ -6,8 +6,7 @@ import cors from 'cors';
 import { randomUUID } from 'node:crypto';
 import { SAPODataMCPServer } from './server.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-// Ya no necesitamos isInitializeRequest aquí si lo reemplazamos, pero lo dejamos por si se usa en otro lado.
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'; 
+ 
 
 const app = express();
 app.use(express.json());

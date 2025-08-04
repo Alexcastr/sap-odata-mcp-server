@@ -6,8 +6,8 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
+    "start": "node dist/server-http.js",
+    "dev": "tsx src/server-http.ts",
     "test": "jest",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts"
@@ -51,7 +51,7 @@
     "node": ">=18.0.0"
   },
   "bin": {
-    "sap-odata-mcp-server": "./dist/index.js"
+    "sap-odata-mcp-server": "./dist/server-http.js"
   },
   "files": [
     "dist/**/*",
